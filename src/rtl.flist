@@ -1,0 +1,7 @@
+project.sv
+config_pkg.sv
+togawa.sv
+spi_arbiter.sv
+spi_master.sv
+main_module.sv
+top_module.sv

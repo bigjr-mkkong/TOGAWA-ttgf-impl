@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "name": "spi_ram_access",
+  "code": ["0000"],
+  "precondition": {
+    "memory": [
+      {
+        "address": 512,
+        "bytes": [0, 255, 85, 170, 1, 2, 4, 8, 16, 32, 64, 128, 18, 52, 86, 120]
+      },
+      {
+        "address": 65520,
+        "bytes": [255, 0, 170, 85, 128, 64, 32, 16, 8, 4, 2, 1, 222, 173, 190, 239]
+      }
+    ]
+  },
+  "postcondition": {
+    "halt": true,
+    "memory": [
+      {
+        "address": 512,
+        "bytes": [0, 255, 85, 170, 1, 2, 4, 8, 16, 32, 64, 128, 18, 52, 86, 120]
+      },
+      {
+        "address": 65520,
+        "bytes": [255, 0, 170, 85, 128, 64, 32, 16, 8, 4, 2, 1, 222, 173, 190, 239]
+      }
+    ]
+  },
+  "simulation": {
+    "registers": {
+      "pc_q": 1,
+      "reg_addr_q": 0,
+      "reg_q": "0000000000000000"
+    },
+    "data_transactions": [],
+    "timeout_ms": 2
+  }
+}

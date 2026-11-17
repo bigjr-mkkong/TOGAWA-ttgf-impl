@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "name": "basic_toga_jump",
+  "code": [
+    "8040",
+    "0401",
+    "0000",
+    "0000"
+  ],
+  "precondition": {
+    "memory": [
+      {
+        "address": 512,
+        "bytes": [
+          164,
+          90,
+          18,
+          52,
+          86,
+          120,
+          154,
+          188
+        ]
+      }
+    ]
+  },
+  "postcondition": {
+    "halt": true,
+    "memory": [
+      {
+        "address": 512,
+        "bytes": [
+          160,
+          90,
+          18,
+          52,
+          86,
+          120,
+          154,
+          188
+        ]
+      }
+    ]
+  },
+  "simulation": {
+    "registers": {
+      "pc_q": 4,
+      "reg_addr_q": 512,
+      "reg_q": "bc9a785634125aa0"
+    },
+    "timeout_ms": 2
+  }
+}

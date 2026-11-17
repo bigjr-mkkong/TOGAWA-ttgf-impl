@@ -1,0 +1,318 @@
+"""Integrated CPU programs using the streaming serial SPI RAM model."""
+
+import os
+
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import ClockCycles, FallingEdge, ReadOnly, RisingEdge, Timer, with_timeout
+
+from .simp_spi_ram_helper import read_memory, write_memory
+from .programs.dataset import check_memory, initial_regions, load_programs
+
+GATES = os.environ.get("GATES") == "yes"
+
+PROGRAMS = {case["name"]: case for case in load_programs()}
+
+
+async def reset(dut):
+    dut.rst_ni.value = 0
+    cocotb.start_soon(Clock(dut.clk_i, 20, unit="ns").start())
+    await ClockCycles(dut.clk_i, 3)
+    await Timer(1, unit="ns")
+    assert not dut.halt_o.value
+    await write_memory(dut.ram.mem, 0, [0x00] * len(dut.ram.mem))
+
+
+async def check_branch_targets(dut, backward_offsets):
+    """Check branch targets against independently captured instruction words."""
+    pipeline = dut.user_project.top_module_inst.main_module_inst.pipeline
+    instruction = None
+    while True:
+        await FallingEdge(dut.clk_i)
+        await ReadOnly()
+        if not pipeline.rst_ni.value:
+            instruction = None
+            continue
+        branch = bool(pipeline.flush.value)
+        if branch:
+            assert instruction is not None, "Branch without an accepted instruction"
+            raw = instruction & 0x1FF
+            offset = raw - 0x200 if raw & 0x100 else raw
+            base = int(pipeline.pc_q.value)
+            target = (base + offset) & 0xFFFF
+            assert int(pipeline.pc_d.value) == target, (
+                f"Branch at PC {base - 1:#06x}: offset {offset}, expected {target:#06x}"
+            )
+        incoming = (int(pipeline.icache_inst_i.value)
+                    if pipeline.icache_val_i.value and pipeline.icache_rdy_o.value
+                    else instruction)
+        await RisingEdge(dut.clk_i)
+        await ReadOnly()
+        if branch:
+            assert int(pipeline.pc_q.value) == target, f"PC did not reach {target:#06x}"
+            if offset < 0:
+                backward_offsets.append(offset)
+        instruction = incoming
+
+
+async def check_data_transactions(dut, transactions):
+    """Check whole-word transfers, byte effects, and commit only after completion."""
+    cpu = dut.user_project.top_module_inst.main_module_inst
+    source = getattr(cpu, "sources[0]")
+    pipeline = cpu.pipeline
+    pending = held = None
+    while True:
+        await FallingEdge(dut.clk_i)
+        await ReadOnly()
+        if not pipeline.rst_ni.value:
+            continue
+        payload = (int(source.req_we.value), int(source.req_addr.value),
+                   int(source.req_wdata.value))
+        if held is not None:
+            assert source.req_val.value and payload == held, "Stalled request changed"
+        held = payload if source.req_val.value and not source.req_rdy.value else None
+        if source.req_val.value and source.req_rdy.value:
+            assert pending is None, "Multiple outstanding data requests"
+            assert not source.req_is_inst.value and payload[1] % 8 == 0
+            pending = payload
+            # Datasets describe byte effects independently of SPI frame grouping.
+            transactions.extend((payload[0], payload[1] + byte,
+                                 (payload[2] >> (8 * byte)) & 0xFF if payload[0] else 0)
+                                for byte in range(8))
+        response = bool(source.rsp_val.value and source.rsp_rdy.value)
+        previous = int(pipeline.reg_q.value)
+        previous_address = int(pipeline.reg_addr_q.value)
+        previous_instruction = (int(pipeline.pc_q.value), int(pipeline.opcode_q.value),
+                                int(pipeline.mask_q.value), int(pipeline.branch_offset_q.value),
+                                int(pipeline.direct_addr_q.value),
+                                int(pipeline.inst_valid_q.value))
+        expected = previous
+        if pending is not None:
+            assert not dut.halt_o.value, "HALT before the completed data response"
+        if response:
+            assert pending is not None, "Unsolicited data response"
+            write, address, _ = pending
+            if not write:
+                expected = int(source.rsp_rdata.value)
+        await RisingEdge(dut.clk_i)
+        await ReadOnly()
+        if pending is not None:
+            assert int(pipeline.reg_q.value) == expected, "Register committed before completion"
+            assert int(pipeline.reg_addr_q.value) == (
+                address if response and not write else previous_address)
+            if not (response and not write):
+                assert (int(pipeline.pc_q.value), int(pipeline.opcode_q.value),
+                        int(pipeline.mask_q.value), int(pipeline.branch_offset_q.value),
+                        int(pipeline.direct_addr_q.value),
+                        int(pipeline.inst_valid_q.value)) == previous_instruction, (
+                    "Execution advanced during an incomplete data transfer")
+            if response:
+                assert not pipeline.reg_dirty_q.value
+                pending = None
+
+
+async def load_program(dut, program):
+    """Clear RAM and apply the dataset's code and memory preconditions."""
+    await reset(dut)
+    for address, data in initial_regions(program):
+        await write_memory(dut.ram.mem, address, list(data))
+
+
+def check_postcondition(dut, program):
+    check_memory(program, lambda address, length: read_memory(dut.ram.mem, address, length))
+    if GATES:
+        return
+    pipeline = dut.user_project.top_module_inst.main_module_inst.pipeline
+    for name, expected in program["simulation"].get("registers", {}).items():
+        assert int(getattr(pipeline, name).value) == expected, f"{program['name']}: {name}"
+
+
+async def check_halted(dut):
+    """HALT empties the pipeline and stays asserted without further execution."""
+    if not GATES:
+        pipeline = dut.user_project.top_module_inst.main_module_inst.pipeline
+        source = getattr(dut.user_project.top_module_inst.main_module_inst, "sources[0]")
+        state = (int(pipeline.pc_q.value), int(pipeline.reg_q.value),
+                 int(pipeline.reg_addr_q.value))
+    for _ in range(64):
+        await RisingEdge(dut.clk_i)
+        await ReadOnly()
+        assert dut.halt_o.value
+        assert dut.spi_cs_n.value and not dut.spi_sclk.value
+        assert int(dut.uo_out.value) & 0xF0 == 0
+        assert int(dut.uio_out.value) == 0 and int(dut.uio_oe.value) == 0
+        if not GATES:
+            assert not pipeline.inst_valid_q.value
+            assert not pipeline.reg_dirty_q.value
+            assert not pipeline.icache_req_val_o.value and not pipeline.icache_rdy_o.value
+            assert not source.req_val.value and not source.rsp_rdy.value
+            assert (int(pipeline.pc_q.value), int(pipeline.reg_q.value),
+                    int(pipeline.reg_addr_q.value)) == state
+    await Timer(1, unit="ns")
+
+
+async def prog_exec(dut, program):
+    """Execute one dataset, including its simulation-only observations."""
+    await load_program(dut, program)
+    sim = program["simulation"]
+    backward_offsets, transactions = [], []
+    # Minsky checks the final memory; focused branch tests check PC sequencing.
+    monitor = (cocotb.start_soon(check_branch_targets(dut, backward_offsets))
+               if not GATES and program["name"] != "minsky_circle" else None)
+    data_monitor = (cocotb.start_soon(check_data_transactions(dut, transactions))
+                    if not GATES and "data_transactions" in sim else None)
+    dut.rst_ni.value = 1
+    try:
+        await with_timeout(RisingEdge(dut.halt_o), 2 * sim.get("timeout_ms", 500), "ms")
+        await Timer(1, unit="ns")
+    finally:
+        if monitor is not None:
+            monitor.cancel()
+        if data_monitor is not None:
+            data_monitor.cancel()
+    await Timer(1, unit="ns")
+    assert dut.halt_o.value
+    assert dut.spi_cs_n.value, "CPU halted during a serial transaction"
+    await check_halted(dut)
+    check_postcondition(dut, program)
+    if GATES:
+        return
+    if monitor is not None:
+        assert len(backward_offsets) >= sim.get("min_backward_branches", 0)
+        if "backward_offsets" in sim:
+            assert set(backward_offsets) == set(sim["backward_offsets"])
+    if "data_transactions" in sim:
+        assert transactions == [tuple(transfer) for transfer in sim["data_transactions"]]
+    if backward_offsets:
+        dut._log.info("%s: checked %d backward branches, offsets %s",
+                      program["name"], len(backward_offsets), sorted(set(backward_offsets)))
+
+
+async def reset_last_byte(dut, write):
+    await load_program(dut, PROGRAMS["wa_direct_64"])
+    cpu = dut.user_project.top_module_inst.main_module_inst
+    original = read_memory(dut.ram.mem, 0xFFF8, 8)
+    dut.rst_ni.value = 1
+    while True:
+        await FallingEdge(dut.clk_i)
+        if (bool(cpu.pipeline.reg_dirty_q.value) == write
+                and int(cpu.arbiter.curr_idx_q.value) == 0
+                and not dut.spi_cs_n.value and int(cpu.spi.bit_idx.value) == 80):
+            break
+    assert not dut.halt_o.value
+    partial = read_memory(dut.ram.mem, 0xFFF8, 8)
+    if write:
+        assert partial == [0x10, 0x32, 0x55, 0x76, 0x98, 0xBA, 0xDC, 0xFE]
+    else:
+        assert not cpu.pipeline.reg_q.value
+        assert not cpu.pipeline.reg_addr_q.value
+        assert partial == original
+    dut.rst_ni.value = 0
+    await ClockCycles(dut.clk_i, 3)
+    await Timer(1, unit="ns")
+    assert not cpu.pipeline.reg_q.value
+    assert not cpu.pipeline.reg_addr_q.value
+    assert not cpu.pipeline.reg_dirty_q.value
+    assert not cpu.pipeline.spi_state_q.value
+    assert not dut.halt_o.value
+    assert dut.spi_cs_n.value
+    assert read_memory(dut.ram.mem, 0xFFF8, 8) == partial
+    await write_memory(dut.ram.mem, 0xFFF8, original)
+    dut.rst_ni.value = 1
+    await with_timeout(RisingEdge(dut.halt_o), 4, "ms")
+    await Timer(1, unit="ns")
+    check_postcondition(dut, PROGRAMS["wa_direct_64"])
+
+
+@cocotb.test(timeout_time=4, timeout_unit="ms", skip=GATES)
+async def reset_during_last_load_byte(dut):
+    await reset_last_byte(dut, False)
+
+
+@cocotb.test(timeout_time=4, timeout_unit="ms", skip=GATES)
+async def reset_during_last_write_byte(dut):
+    await reset_last_byte(dut, True)
+
+
+@cocotb.test(timeout_time=4, timeout_unit="ms", skip=GATES)
+async def asynchronous_reset_pulse(dut):
+    await prog_exec(dut, PROGRAMS["basic_wa"])
+    cpu = dut.user_project.top_module_inst.main_module_inst
+
+    # A pulse entirely between rising edges must still reset every CPU block.
+    await FallingEdge(dut.clk_i)
+    await Timer(1, unit="ns")
+    dut.rst_ni.value = 0
+    await Timer(1, unit="ns")
+    assert not dut.user_project.top_module_inst.rst_sync_ni.value
+    assert not cpu.pipeline.rst_ni.value
+    assert not cpu.arbiter.rst_ni.value
+    assert cpu.spi.rst.value
+    dut.rst_ni.value = 1
+    await Timer(1, unit="ns")
+    assert not dut.clk_i.value
+    assert not dut.user_project.top_module_inst.rst_sync_ni.value
+
+    await RisingEdge(dut.clk_i)
+    await Timer(1, unit="ns")
+    assert not dut.user_project.top_module_inst.rst_sync_ni.value
+    assert not cpu.pipeline.pc_q.value
+    assert not cpu.pipeline.reg_q.value
+    assert not dut.halt_o.value
+    assert int(cpu.arbiter.state_q.value) == 0
+    assert int(cpu.spi.state.value) == 0
+    assert dut.spi_cs_n.value
+
+    await RisingEdge(dut.clk_i)
+    await Timer(1, unit="ns")
+    assert dut.user_project.top_module_inst.rst_sync_ni.value
+    assert not cpu.pipeline.pc_q.value
+    assert not dut.halt_o.value
+    await with_timeout(RisingEdge(dut.halt_o), 4, "ms")
+    await Timer(1, unit="ns")
+    assert dut.spi_cs_n.value
+    check_postcondition(dut, PROGRAMS["basic_wa"])
+
+
+@cocotb.test(timeout_time=1, timeout_unit="ms")
+async def memory_access(dut):
+    await reset(dut)
+    memory = dut.ram.mem
+    await write_memory(memory, 0, [0x12, 0xA7, 0x35])
+    await write_memory(memory, len(memory) - 2, [0xFE, 0xCA])
+    assert read_memory(memory, 0, 3) == [0x12, 0xA7, 0x35]
+    assert read_memory(memory, len(memory) - 2, 2) == [0xFE, 0xCA]
+    await write_memory(memory, len(memory), [])
+    assert read_memory(memory, len(memory), 0) == []
+    for address, length in ((-1, 1), (0, -1), (len(memory), 1)):
+        try:
+            read_memory(memory, address, length)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Out-of-range read was accepted")
+    for address, data in ((-1, [0x00]), (len(memory) - 1, [0x00, 0x00]), (0, [0x00, 0x100])):
+        try:
+            await write_memory(memory, address, data)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Invalid memory write was accepted")
+    await Timer(1, unit="ns")
+    assert read_memory(memory, 0, 3) == [0x12, 0xA7, 0x35]
+    assert read_memory(memory, len(memory) - 2, 2) == [0xFE, 0xCA]
+
+
+def program_test(program):
+    async def run(dut):
+        await prog_exec(dut, program)
+    run.__name__ = program["name"]
+    run.__qualname__ = program["name"]
+    return cocotb.test(timeout_time=2 * program["simulation"].get("timeout_ms", 500),
+                       timeout_unit="ms")(run)
+
+
+for _program in PROGRAMS.values():
+    if _program["name"] in globals():
+        raise ValueError(f"Program name conflicts with a bench helper: {_program['name']}")
+    globals()[_program["name"]] = program_test(_program)

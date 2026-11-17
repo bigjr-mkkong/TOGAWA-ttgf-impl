@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "name": "wa_indirect_zero",
+  "code": [
+    "8800",
+    "c000",
+    "0000"
+  ],
+  "precondition": {
+    "memory": [
+      {
+        "address": 16384,
+        "bytes": [
+          0,
+          32,
+          171,
+          137,
+          103,
+          69,
+          35,
+          241
+        ]
+      }
+    ]
+  },
+  "postcondition": {
+    "halt": true,
+    "memory": [
+      {
+        "address": 0,
+        "bytes": [
+          0,
+          136,
+          0,
+          192,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "address": 16384,
+        "bytes": [
+          0,
+          32,
+          171,
+          137,
+          103,
+          69,
+          35,
+          241
+        ]
+      }
+    ]
+  },
+  "simulation": {
+    "registers": {
+      "pc_q": 3,
+      "reg_addr_q": 0,
+      "reg_q": "00000000c0008800"
+    },
+    "timeout_ms": 2
+  }
+}

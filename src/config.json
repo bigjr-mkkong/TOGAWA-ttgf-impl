@@ -19,6 +19,17 @@
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
   "CLOCK_PERIOD": 20,
 
+  "//": "The imported CPU uses SystemVerilog interfaces and modports.",
+  "USE_SLANG": true,
+  "VERILOG_INCLUDE_DIRS": ["dir::."],
+
+  "SYNTH_STRATEGY": "DELAY 1",
+
+  "PL_TIMING_DRIVEN": true,
+  "RUN_POST_GRT_DESIGN_REPAIR": true,
+  "RUN_POST_GRT_RESIZER_TIMING": true,
+  "GRT_RESIZER_SETUP_SLACK_MARGIN": 3.0,
+
   "//": "Hold slack margin - Increase them in case you are getting hold violations.",
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
   "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.05,

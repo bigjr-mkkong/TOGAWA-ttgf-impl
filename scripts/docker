@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+# This host cannot create Docker bridge interfaces; LibreLane starts sibling containers.
+if [ "${1:-}" = run ]; then
+    shift
+    exec /usr/local/bin/docker-host run --network host "$@"
+fi
+exec /usr/local/bin/docker-host "$@"

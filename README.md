@@ -4,6 +4,46 @@
 
 - [Read the documentation for project](docs/info.md)
 
+## Local GF180 environment
+
+Build the image using the existing `tt-sky130-env:latest` image as its base:
+
+```sh
+docker build --network host -t tt-gf180-env:latest .
+```
+
+It retains the existing Tiny Tapeout support tools and installs Verilator 5.046,
+cocotb 2.1.0, and LibreLane 3.0.14 with `PDK=gf180mcuD`, following the
+[local-hardening guide](https://tinytapeout.com/guides/local-hardening/).
+The host only needs Docker and Make; no host simulator installation is required.
+
+```sh
+make test-unit # Arbiter/SPI cocotb tests and Python checks
+make test-full # Full CPU programs with pre/post memory checks
+make harden   # Generate configuration, then run synthesis through routing
+make report   # Print the synthesis report and routing statistics
+make cmd      # Interactive shell, with the Python environment already active
+```
+
+Inside `make cmd`, run the support tools directly, for example:
+
+```sh
+./tt/tt_tool.py --pdk "$PDK" --create-user-config
+./tt/tt_tool.py --pdk "$PDK" --print-top-module
+```
+
+Pass `--pdk "$PDK"` when invoking `tt_tool.py` directly: its default is SKY130.
+The Make targets always select GF180. They copy `tt/` from the image on first use
+and keep the PDK cache in `.pdk/` and container home in `.tt-home/`.
+LibreLane downloads the GF180 PDK and its tool image on first hardening if needed.
+`make harden` replaces `runs/wokwi`; save any previous run you want to retain.
+`make report` requires synthesis results and does not start a flow.
+
+The launcher uses the host Docker socket and host networking so LibreLane can
+start its tool container, with the project mounted at the same absolute path.
+Generated files belong to your host user. RTL waveforms are under
+`test/sim_build/`; see [test/README.md](test/README.md) for individual test targets.
+
 ## What is Tiny Tapeout?
 
 Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.

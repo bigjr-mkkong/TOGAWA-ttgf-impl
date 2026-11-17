@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "toga_halt",
+  "code": ["0400", "0000"],
+  "precondition": {"memory": []},
+  "postcondition": {
+    "halt": true,
+    "memory": [{"address": 0, "bytes": [4, 0, 0, 0, 0, 0, 0, 0]}]
+  },
+  "simulation": {
+    "registers": {"pc_q": 2, "reg_addr_q": 0, "reg_q": "0000000000000004"},
+    "data_transactions": [
+      [1, 0, 4], [1, 1, 0], [1, 2, 0], [1, 3, 0],
+      [1, 4, 0], [1, 5, 0], [1, 6, 0], [1, 7, 0]
+    ],
+    "timeout_ms": 2
+  }
+}

@@ -7,14 +7,14 @@ You can also include images in this folder and reference them in the markdown. E
 512 kb in size, and the combined size of all images must be less than 1 MB.
 -->
 
-## How it works
+## 2-stage TOGA based processor
 
-Explain how your project works
+This project implements a two stage TOGA based URISC processor architecture. It support variety of programs, include fibonacci, gcd/lcm, lsfr, and minsky circle algorithm just for demonstration
 
 ## How to test
 
-Explain how to use your project
+The current implementation passed FPGA verification.
 
 ## External hardware
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+It's connected with external 23LC512 SRAM module. Breadboard verification passed under 50MHz.
