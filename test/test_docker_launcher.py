@@ -1,12 +1,36 @@
 """Check Docker forwarding without starting containers: python3 -m unittest discover -s test -p test_docker_launcher.py."""
 
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
 
 
 class DockerLauncherTest(unittest.TestCase):
+    def test_clean_without_cocotb_or_simulators(self):
+        makefile = Path(__file__).resolve().with_name("Makefile")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tools = root / "bin"
+            tools.mkdir()
+            (tools / "rm").symlink_to(shutil.which("rm"))
+            generated = ("sim_build/gl/stale", "sim_build/rtl/stale", "results.xml",
+                         "results-arbiter.xml", "tb.fst", "tb.vcd")
+            inputs = ("tb.v", "gate_level_netlist.v", "program.json")
+            for name in generated + inputs:
+                artifact = root / name
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                artifact.write_text("fixture\n")
+            result = subprocess.run([shutil.which("make"), "-f", str(makefile), "clean"],
+                                    cwd=root, env={"PATH": str(tools)},
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for name in generated:
+                self.assertFalse((root / name).exists(), name)
+            for name in inputs:
+                self.assertEqual((root / name).read_text(), "fixture\n")
+
     def test_make_targets_select_gf180_and_only_harden_starts_a_flow(self):
         root = Path(__file__).resolve().parents[1]
         for target in ("test-unit", "test-full", "harden", "report", "cmd"):

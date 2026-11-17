@@ -53,8 +53,14 @@ TOPLEVEL = tb
 # List test modules to run, separated by commas and without the .py suffix:
 COCOTB_TEST_MODULES = cocotb_benches.top_module
 
-# include cocotb's make rules to take care of the simulator setup
+ifeq ($(MAKECMDGOALS),clean)
+.PHONY: clean
+clean:
+	$(RM) -r sim_build
+	$(RM) results*.xml tb.fst tb.vcd
+else
 include $(shell cocotb-config --makefiles)/Makefile.sim
+endif
 
 .PHONY: unit unit-arbiter unit-spi
 unit: unit-arbiter unit-spi
