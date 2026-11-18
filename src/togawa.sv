@@ -34,7 +34,7 @@ module togawa_pipeline (
     opcode_t opcode_d, opcode_q;
     logic inst_valid_d, inst_valid_q;
     logic [63:0] mask_d, mask_q;
-    logic [15:0] branch_offset_d, branch_offset_q;
+    logic [8:0] branch_offset_d, branch_offset_q;
     logic [15:0] direct_addr_d, direct_addr_q;
 
     logic [15:0] pc_d, pc_q;
@@ -61,7 +61,7 @@ module togawa_pipeline (
         else
             opcode_d = icache_inst_i[14] ? OP_WA_INDIRECT : OP_WA_DIRECT;
         mask_d = 64'h1 << icache_inst_i[14:9];
-        branch_offset_d = { {7{icache_inst_i[8]}}, icache_inst_i[8:0] };
+        branch_offset_d = icache_inst_i[8:0];
         direct_addr_d = {icache_inst_i[12:0], 3'b000};
         inst_valid_d = inst_valid_q && stall;
 
@@ -72,7 +72,7 @@ module togawa_pipeline (
 
         if (flush) begin
             // IFID already advanced PC past the executing instruction.
-            pc_d = pc_q + branch_offset_q;
+            pc_d = pc_q + { {7{branch_offset_q[8]}}, branch_offset_q };
             inst_valid_d = 1'b0;
         end else if (icache_val_i && icache_rdy_o) begin
             pc_d = pc_q + 16'd1;
@@ -85,7 +85,7 @@ module togawa_pipeline (
             pc_q <= 16'd0;
             opcode_q <= OP_HALT;
             mask_q <= 64'd0;
-            branch_offset_q <= 16'd0;
+            branch_offset_q <= 9'd0;
             direct_addr_q <= 16'd0;
             inst_valid_q <= 1'b0;
         end else begin

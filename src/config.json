@@ -23,13 +23,63 @@
   "USE_SLANG": true,
   "VERILOG_INCLUDE_DIRS": ["dir::."],
 
+  "//": "Customized: Use DELAY1 config for synthesis",
   "SYNTH_STRATEGY": "DELAY 1",
 
+  "//": "Customized: Use Timing driven global placement",
   "PL_TIMING_DRIVEN": true,
+
+
+  "//": "Customized: Run post routing repair to fix DRV and timing violations",
   "RUN_POST_GRT_DESIGN_REPAIR": true,
   "RUN_POST_GRT_RESIZER_TIMING": true,
   "GRT_RESIZER_SETUP_SLACK_MARGIN": 3.0,
+
+  "//": "Customized: Limit clock tree cluster to reduce fan out violation",
   "CTS_SINK_CLUSTERING_SIZE": 8,
+
+  "RSZ_CORNERS": ["max_ss_125C_3v00", "min_ff_n40C_3v60"],
+
+  "//": "Customized: Use smaller clock-tree branch buffers to meet the 0.2 pF cap limit.",
+  "CTS_ROOT_BUFFER": "gf180mcu_fd_sc_mcu7t5v0__clkbuf_8",
+
+  "meta": {
+    "flow": "Classic",
+    "substituting_steps": {
+      "+OpenROAD.ResizerTimingPostGRT": "Odb.InsertECOBuffers"
+    }
+  },
+  "//": "Customized: Add buffers for weak driven wire to fix slew violations",
+  "INSERT_ECO_BUFFERS": [
+    {"target": "_2162_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_1"},
+    {"target": "_3184_/Q", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_2165_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_3156_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_1"},
+    {"target": "_3543_/Q", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_1627_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_1698_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_2220_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_2153_/Z", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_3206_/Q", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_3079_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_3532_/Q", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_1670_/Z", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_3258_/Q", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_2044_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_3334_/Q", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_1613_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_2687_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_2026_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_1664_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_3204_/Q", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_2261_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_1614_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_3104_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_2280_/Z", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_3205_/Q", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"},
+    {"target": "_2688_/Z", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_4"},
+    {"target": "_1602_/ZN", "buffer": "gf180mcu_fd_sc_mcu7t5v0__buf_2"}
+  ],
 
   "//": "Hold slack margin - Increase them in case you are getting hold violations.",
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
